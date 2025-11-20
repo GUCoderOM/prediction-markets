@@ -1,34 +1,68 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import CandleChart from "@/components/market/CandleChart";
 import toast from "react-hot-toast";
 
+// TYPES
 type PricePoint = {
   priceYes: number;
   priceNo: number;
   createdAt: string;
 };
 
+type CandlePoint = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
 type Market = {
-  id: number | string;
+  id: number;
   title: string;
   description: string;
   priceHistory: PricePoint[];
 };
 
+type WSMessage =
+  | {
+      type: "market_update";
+      marketId: number;
+      yesShares: number;
+      noShares: number;
+      priceYes: number;
+      priceNo: number;
+      historyPoint: { yes: number; no: number };
+    }
+  | {
+      type: "candle_update";
+      marketId: number;
+      timestamp: number;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+    };
+
 export default function MarketPage() {
   const { id } = useParams();
 
   const [market, setMarket] = useState<Market | null>(null);
-  const [candles, setCandles] = useState<any[]>([]);
+  const [candles, setCandles] = useState<CandlePoint[]>([]);
+  const [shares, setShares] = useState<number>(1);
   const [loading, setLoading] = useState(true);
-  const [shares, setShares] = useState<number>(1); // ✅ Allow custom share amount
+
+  const wsRef = useRef<WebSocket | null>(null);
 
   const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
   const token = process.env.NEXT_PUBLIC_DEV_TOKEN || "";
 
+  // ==============================
+  // INITIAL DATA FETCH
+  // ==============================
   useEffect(() => {
     if (!id) return;
 
@@ -42,32 +76,31 @@ export default function MarketPage() {
         });
 
         const data = await res.json();
-        setMarket(data.market);
+        const m: Market = data.market;
 
-        if (data.market && data.market.priceHistory) {
-          let lastClose =
-            data.market.priceHistory.length > 0
-              ? data.market.priceHistory[0].priceYes
-              : 0.5;
+        setMarket(m);
 
-          const formatted = data.market.priceHistory.map((p: PricePoint) => {
-            const open = lastClose;
-            const close = p.priceYes;
+        // Build initial candles
+        let lastClose =
+          m.priceHistory.length > 0 ? m.priceHistory[0].priceYes : 0.5;
 
-            const candle = {
-              time: new Date(p.createdAt).getTime() / 1000,
-              open,
-              high: Math.max(open, close),
-              low: Math.min(open, close),
-              close,
-            };
+        const initialCandles = m.priceHistory.map((p) => {
+          const open = lastClose;
+          const close = p.priceYes;
 
-            lastClose = close;
-            return candle;
-          });
+          const c: CandlePoint = {
+            time: new Date(p.createdAt).getTime() / 1000,
+            open,
+            high: Math.max(open, close),
+            low: Math.min(open, close),
+            close,
+          };
 
-          setCandles(formatted);
-        }
+          lastClose = close;
+          return c;
+        });
+
+        setCandles(initialCandles);
       } finally {
         setLoading(false);
       }
@@ -76,14 +109,70 @@ export default function MarketPage() {
     load();
   }, [id, base, token]);
 
-  if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
-  if (!market) return <div style={{ padding: 20 }}>Market not found.</div>;
+  // ==============================
+  // WEBSOCKET LIVE UPDATES
+  // ==============================
+  useEffect(() => {
+    if (!id) return;
 
-  const latest = market.priceHistory.at(-1);
+    const ws = new WebSocket("ws://localhost:8081");
+    wsRef.current = ws;
 
-  // ============================
-  // BUY FUNCTION (with toast)
-  // ============================
+    ws.onopen = () => {
+      ws.send(
+        JSON.stringify({
+          type: "subscribe",
+          marketId: Number(id),
+        })
+      );
+    };
+
+    ws.onmessage = (event) => {
+      const msg: WSMessage = JSON.parse(event.data);
+
+      // MARKET UPDATES (YES/NO prices)
+      if (msg.type === "market_update") {
+        setMarket((prev) =>
+          prev
+            ? {
+                ...prev,
+                priceHistory: [
+                  ...prev.priceHistory,
+                  {
+                    priceYes: msg.priceYes,
+                    priceNo: msg.priceNo,
+                    createdAt: new Date().toISOString(),
+                  },
+                ],
+              }
+            : prev
+        );
+      }
+
+      // CANDLE UPDATES
+      if (msg.type === "candle_update") {
+        setCandles((prev) => [
+          ...prev,
+          {
+            time: msg.timestamp / 1000,
+            open: msg.open,
+            high: msg.high,
+            low: msg.low,
+            close: msg.close,
+          },
+        ]);
+      }
+    };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
+  }, [id]);
+
+  // ==============================
+  // BUY FUNCTION
+  // ==============================
   async function buy(position: "yes" | "no") {
     if (shares <= 0) {
       toast.error("Shares must be at least 1");
@@ -97,21 +186,26 @@ export default function MarketPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ shares }),
+        body: JSON.stringify({ shares: Number(shares) }),
       });
 
-      const result = await res.json();
+      const json = await res.json();
 
       if (!res.ok) {
-        toast.error(result.message || "Trade failed");
+        toast.error(json.message || "Trade failed");
         return;
       }
 
       toast.success(`Bought ${shares} share(s) of ${position.toUpperCase()}`);
-    } catch (err) {
+    } catch {
       toast.error("Trade failed");
     }
   }
+
+  if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
+  if (!market) return <div style={{ padding: 20 }}>Market not found.</div>;
+
+  const latest = market.priceHistory.at(-1);
 
   return (
     <div style={{ padding: 20, maxWidth: 700, margin: "0 auto" }}>
@@ -122,14 +216,12 @@ export default function MarketPage() {
 
       {latest && (
         <div style={{ marginTop: 20 }}>
-          <strong>YES:</strong> {(latest.priceYes * 100).toFixed(1)}% &nbsp; | &nbsp;
+          <strong>YES:</strong> {(latest.priceYes * 100).toFixed(1)}% &nbsp;|&nbsp;
           <strong>NO:</strong> {(latest.priceNo * 100).toFixed(1)}%
         </div>
       )}
 
-      {/* =======================
-          SHARE INPUT
-      ======================== */}
+      {/* SHARE INPUT */}
       <div style={{ marginTop: 25 }}>
         <label style={{ fontWeight: 600 }}>Shares:</label>
         <input
@@ -148,9 +240,7 @@ export default function MarketPage() {
         />
       </div>
 
-      {/* =======================
-          BUY BUTTONS
-      ======================== */}
+      {/* BUY BUTTONS */}
       <div style={{ marginTop: 30, display: "flex", gap: 15 }}>
         <button
           onClick={() => buy("yes")}

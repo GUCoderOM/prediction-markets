@@ -2,6 +2,9 @@
 import { broadcast } from "../../ws/server.js";
 
 export function broadcastCandle(marketId: number, candle: any) {
+  // Convert timestamp → seconds
+  const seconds = Math.floor(new Date(candle.timestamp).getTime() / 1000);
+
   console.log("📡 Broadcasting candle:", {
     marketId,
     timeframe: candle.timeframe,
@@ -9,7 +12,7 @@ export function broadcastCandle(marketId: number, candle: any) {
     high: candle.high,
     low: candle.low,
     close: candle.close,
-    timestamp: candle.timestamp,
+    timestamp: seconds,
   });
 
   broadcast({
@@ -20,6 +23,6 @@ export function broadcastCandle(marketId: number, candle: any) {
     high: candle.high,
     low: candle.low,
     close: candle.close,
-    timestamp: candle.timestamp,
+    timestamp: seconds, // ✔ seconds, not ms
   });
 }
