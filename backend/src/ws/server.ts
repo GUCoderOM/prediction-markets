@@ -27,7 +27,7 @@ export function startWebSocketServer() {
         if (data.type === "subscribe") {
           client.marketId = data.marketId;
         }
-      } catch {}
+      } catch { }
     });
 
     ws.on("close", () => {
@@ -41,7 +41,7 @@ export function broadcast(data: any) {
 
   for (const client of clients) {
     if (client.ws.readyState !== WebSocket.OPEN) continue;
-    if (data.marketId && client.marketId !== data.marketId) continue;
+    if (client.marketId && data.marketId && client.marketId !== data.marketId) continue;
     client.ws.send(payload);
   }
 }

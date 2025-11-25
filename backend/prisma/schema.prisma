@@ -18,15 +18,47 @@ enum Outcome {
   no
 }
 
+enum OrderType {
+  market
+  limit
+}
+
+enum OrderSide {
+  buy
+  sell
+}
+
+enum OrderStatus {
+  open
+  partially_filled
+  filled
+  cancelled
+}
+
+enum WalletTransactionType {
+  deposit
+  withdraw
+  trade_debit
+  trade_credit
+  settlement_credit
+  settlement_debit
+  fee
+  adjustment
+}
+
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id        Int                   @id @default(autoincrement())
+  email     String                @unique
   password  String
-  balance   Int      @default(1000)
-  isAdmin   Boolean  @default(false)
+  balance   Int                   @default(1000)
+  isAdmin   Boolean               @default(false)
   trades    Trade[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  orders    Order[]
+  positions Position[]
+  wallet    WalletTransaction[]
+  tradeHistory TradeHistory[]
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 }
 
 model Market {
@@ -37,25 +69,78 @@ model Market {
   yesShares    Float                 @default(0)
   noShares     Float                 @default(0)
   resolution   Outcome?
+  resolutionDescription String?
   trades       Trade[]
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  orders       Order[]
+  positions    Position[]
   priceHistory MarketPriceSnapshot[]
   candles      MarketCandle[]
+  orderBook    OrderBookSnapshot[]
+  tradeHistory TradeHistory[]
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+}
+
+model Order {
+  id           Int          @id @default(autoincrement())
+  userId       Int
+  marketId     Int
+  side         OrderSide
+  outcome      Outcome
+  orderType    OrderType
+  price        Float?       // only used for limit orders
+  shares       Float        // desired quantity
+  remaining    Float        // how much is left unfilled
+  status       OrderStatus  @default(open)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id])
+  market       Market       @relation(fields: [marketId], references: [id])
+  trades       Trade[]
 }
 
 model Trade {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    Int
   marketId  Int
+  orderId   Int?
   outcome   Outcome
   shares    Float
   cost      Float
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  user   User   @relation(fields: [userId], references: [id])
-  market Market @relation(fields: [marketId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  market    Market    @relation(fields: [marketId], references: [id])
+  order     Order?    @relation(fields: [orderId], references: [id])
+}
+
+model Position {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  marketId    Int
+  outcome     Outcome
+  totalShares Float     @default(0)
+  avgPrice    Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id])
+  market      Market    @relation(fields: [marketId], references: [id])
+
+  @@unique([userId, marketId, outcome])
+}
+
+model WalletTransaction {
+  id          Int                     @id @default(autoincrement())
+  userId      Int
+  amount      Float
+  txType      WalletTransactionType
+  referenceId Int?                    // trade/order/settlement id for audit
+  createdAt   DateTime                @default(now())
+
+  user        User                    @relation(fields: [userId], references: [id])
 }
 
 model MarketPriceSnapshot {
@@ -75,8 +160,33 @@ model MarketCandle {
   high      Float
   low       Float
   close     Float
-  timeframe String   @default("5s") // <-- ADD THIS
+  timeframe String   @default("5s")
   timestamp DateTime
 
   market Market @relation(fields: [marketId], references: [id])
+}
+
+model OrderBookSnapshot {
+  id        Int      @id @default(autoincrement())
+  marketId  Int
+  bids      String    // JSON stringified depth
+  asks      String    // JSON stringified depth
+  createdAt DateTime  @default(now())
+
+  market Market @relation(fields: [marketId], references: [id])
+}
+
+model TradeHistory {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  marketId    Int
+  outcome     Outcome
+  action      String   // "buy" or "sell"
+  shares      Int
+  price       Float    // Price per share at time of trade
+  totalCost   Float    // Total amount paid/received
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id])
+  market      Market   @relation(fields: [marketId], references: [id])
 }

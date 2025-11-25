@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3001;
 // -------------------------------
 // START EXPRESS SERVER
 // -------------------------------
-const server = app.listen(PORT, () => {
+const server = app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`🚀 Backend running on port ${PORT}`);
 });
 

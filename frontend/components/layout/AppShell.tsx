@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun, Plus } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
+import AdminBotPanel from "@/components/admin/AdminBotPanel";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme();
@@ -34,12 +35,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Show Create button ONLY when logged in */}
           {!loading && user && (
-            <Link href="/create">
-              <Button variant="default" size="sm" className="flex items-center gap-1">
-                <Plus size={16} />
-                Create
-              </Button>
-            </Link>
+            <>
+              {user.isAdmin && <AdminBotPanel />}
+
+              <div className="mr-2 px-3 py-1.5 bg-muted/50 rounded-md border border-border text-sm font-medium">
+                ${user.balance.toFixed(2)}
+              </div>
+              <Link href="/portfolio">
+                <Button variant="ghost" size="sm">
+                  Portfolio
+                </Button>
+              </Link>
+              <Link href="/create">
+                <Button variant="default" size="sm" className="flex items-center gap-1">
+                  <Plus size={16} />
+                  Create
+                </Button>
+              </Link>
+            </>
           )}
 
           <Button variant="ghost" size="icon" onClick={toggleTheme}>

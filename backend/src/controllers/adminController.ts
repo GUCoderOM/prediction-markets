@@ -1,53 +1,28 @@
-import type { Request, Response } from "express";
-import { prisma } from "../utils/prisma.js";
+import type { Request, Response } from 'express';
+import { BotManager } from '../services/BotManager.js';
 
-// ADMIN: Set balance for any user
-export const adminSetUserBalance = async (
-  req: Request & { userId?: number },
-  res: Response
-) => {
-  try {
-    const { userId, balance } = req.body;
+export const startBots = async (req: Request, res: Response) => {
+    try {
+        const { count } = req.body;
+        const botCount = Number(count) || 1;
 
-    if (typeof userId !== "number" || typeof balance !== "number") {
-      return res.status(400).json({ message: "Invalid input" });
+        await BotManager.getInstance().start(botCount);
+
+        res.json({ message: `Started ${botCount} bots`, status: BotManager.getInstance().getStatus() });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
-
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: { balance },
-    });
-
-    res.json({ message: "Balance updated", user });
-  } catch (err) {
-    console.error("SET USER BALANCE ERROR:", err);
-    res.status(500).json({ error: "Server error" });
-  }
 };
 
-// ADMIN: Set own balance (no userId needed)
-export const adminSetOwnBalance = async (
-  req: Request & { userId?: number },
-  res: Response
-) => {
-  try {
-    const { balance } = req.body;
-
-    if (typeof balance !== "number") {
-      return res.status(400).json({ message: "Invalid input" });
+export const stopBots = async (req: Request, res: Response) => {
+    try {
+        BotManager.getInstance().stop();
+        res.json({ message: "Bots stopped", status: BotManager.getInstance().getStatus() });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
+};
 
-    const userId = req.userId!;  // <-- FIX: Non-null assertion
-
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: { balance },
-    });
-
-    res.json({ message: "Balance updated", user });
-
-  } catch (err) {
-    console.error("SET OWN BALANCE ERROR:", err);
-    res.status(500).json({ error: "Server error" });
-  }
+export const getBotStatus = async (req: Request, res: Response) => {
+    res.json(BotManager.getInstance().getStatus());
 };

@@ -69,3 +69,38 @@ export const getMe = async (
     res.status(500).json({ error: "Server error" });
   }
 };
+
+export const getPortfolio = async (
+  req: Request & { userId?: number },
+  res: Response
+) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const positions = await prisma.position.findMany({
+      where: {
+        userId: req.userId,
+        totalShares: { gt: 0 } // Only show active positions
+      },
+      include: {
+        market: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            resolution: true,
+            yesShares: true,
+            noShares: true
+          }
+        }
+      }
+    });
+
+    res.json(positions);
+  } catch (error) {
+    console.error("Get portfolio error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
